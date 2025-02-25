@@ -11,9 +11,13 @@ const useVideoChat = (gender) => {
 
   useEffect(() => {
     
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((currentStream) => {
-      setStream(currentStream);
-    });
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then((currentStream) => {
+        setStream(currentStream);
+      })
+      .catch((err) => {
+        console.error("Error accessing media devices:", err);
+      });
     
     socket.emit("findPartner", { gender });
 

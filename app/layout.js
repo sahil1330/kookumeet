@@ -25,7 +25,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider signInUrl={process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL} signUpUrl={process.env.NEXT_PUBLIC_CLERK_SIGN_UP_URL}>
       <html lang="en">
         <body>
           <SignedOut>
