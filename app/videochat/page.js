@@ -1,17 +1,15 @@
 "use client"
 import React, { useState, useEffect } from "react";
-import { io } from "socket.io-client";
+// import { io } from "socket.io-client";
+import socket from "../../socket";
 import { useRouter } from "next/navigation";
 
 export default function HomePage() {
   const [gender, setGender] = useState(null);
 
-  const [socket, setSocket] = useState(null);
+  // const [socket, setSocket] = useState(null);
   const router = useRouter();
-  useEffect(() => {
-    const socket = io("http://localhost:3000");
-    setSocket(socket);
-  }, []);
+
   const createRoom = async () => {
     const response = await fetch("/api/getCurrentUser");
     const data = await response.json();
