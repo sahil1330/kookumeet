@@ -14,7 +14,7 @@ function Page({ params }) {
     const [usersInRoom, setUsersInRoom] = useState([]);
     const [stream, setStream] = useState(null);
     const [peer, setPeer] = useState(null);
-    
+
     // Use refs to store current values
     const userIdRef = useRef(null);
     const roomIdRef = useRef(null);
@@ -62,65 +62,6 @@ function Page({ params }) {
         };
     }, []);
 
-    const createPeer = (isInitiator) => {
-        if (!streamRef.current || !roomIdRef.current || !userIdRef.current) {
-            console.error("Missing required data for peer creation", {
-                hasStream: !!streamRef.current,
-                roomId: roomIdRef.current,
-                userId: userIdRef.current
-            });
-            return null;
-        }
-
-        console.log("Creating peer", {
-            isInitiator,
-            roomId: roomIdRef.current,
-            userId: userIdRef.current
-        });
-
-        const newPeer = new Peer({
-            initiator: isInitiator,
-            stream: streamRef.current,
-            trickle: false,
-            config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:global.stun.twilio.com:3478' }
-                ]
-            }
-        });
-
-        newPeer.on('signal', (signalData) => {
-            console.log("Generating signal", {
-                roomId: roomIdRef.current,
-                userId: userIdRef.current
-            });
-            
-            socket.emit('signal', {
-                roomId: roomIdRef.current,
-                userId: userIdRef.current,
-                signal: signalData
-            });
-        });
-
-        newPeer.on('stream', (remoteStream) => {
-            console.log("Received remote stream");
-            if (remoteVideoRef.current) {
-                remoteVideoRef.current.srcObject = remoteStream;
-            }
-        });
-
-        newPeer.on('connect', () => {
-            console.log("Peer connection established");
-        });
-
-        newPeer.on('error', (err) => {
-            console.error("Peer error:", err);
-        });
-
-        return newPeer;
-    };
-
     useEffect(() => {
         if (!stream) return;
 
@@ -132,7 +73,7 @@ function Page({ params }) {
 
                 setCurrentUserId(userData.userId);
                 setRoomId(currentRoomId);
-                
+
                 userIdRef.current = userData.userId;
                 roomIdRef.current = currentRoomId;
 
@@ -145,23 +86,79 @@ function Page({ params }) {
                 socket.on("usersInRoom", (users) => {
                     console.log("Users in room:", users);
                     setUsersInRoom(users);
-                    
-                    // If we're the second user, create peer
-                    if (users.length === 2 && users[1] === userData.userId) {
-                        const newPeer = createPeer(false);
-                        if (newPeer) setPeer(newPeer);
-                    }
-                });
 
-                socket.on("userJoined", (newUserId) => {
-                    console.log("User joined:", { newUserId, currentUserId: userData.userId });
-                    if (newUserId !== userData.userId && !peer) {
-                        const newPeer = createPeer(true);
+                    // First user creates offer when second user joins
+                    if (users.length === 2) {
+                        if (users[0] === userData.userId) {
+                            console.log("Creating offer as first user");
+                            const newPeer = new Peer({
+                                initiator: true,
+                                stream: streamRef.current,
+                                trickle: false,
+                                config: {
+                                    iceServers: [
+                                        { urls: 'stun:stun.l.google.com:19302' },
+                                        { urls: 'stun:global.stun.twilio.com:3478' }
+                                    ]
+                                }
+                            });
+                            setPeer(newPeer);
+
+                            newPeer.on('signal', (signalData) => {
+                                console.log("Sending offer signal");
+                                socket.emit('signal', {
+                                    roomId: roomIdRef.current,
+                                    userId: userIdRef.current,
+                                    signal: signalData
+                                });
+                            });
+
+                            newPeer.on('stream', (remoteStream) => {
+                                console.log("Received remote stream as initiator");
+                                if (remoteVideoRef.current) {
+                                    remoteVideoRef.current.srcObject = remoteStream;
+                                }
+                            });
+                        }
+                    }
+                    else {
+                        const newPeer = new Peer({
+                            initiator: false,
+                            stream: streamRef.current,
+                            trickle: true,
+                            config: {
+                                iceServers: [
+                                    { urls: 'stun:stun.l.google.com:19302' },
+                                    { urls: 'stun:global.stun.twilio.com:3478' },
+                                    {
+                                        urls: 'turn:numb.viagenie.ca',
+                                        username: 'webrtc@live.com',
+                                        credential: 'muazkh'
+                                    }
+                                ]
+                            }
+                        })
                         if (newPeer) setPeer(newPeer);
+                        newPeer.on('signal', (signalData) => {
+                           
+                            newPeer.signal(signalData);
+                        });
+
+                        newPeer.on('stream', (remoteStream) => {
+                            if (remoteVideoRef.current) {
+                                remoteVideoRef.current.srcObject = remoteStream;
+                            } else {
+                                remoteVideoRef.current.src = URL.createObjectURL(remoteStream);
+                            }
+                            remoteVideoRef.current.play().catch(err => {
+                                console.error("Error playing remote stream:", err);
+                            });
+                        });
                     }
                 });
 
                 socket.on("userLeft", (leftUserId) => {
+                    console.log("User left:", leftUserId);
                     if (peer) {
                         peer.destroy();
                         setPeer(null);
@@ -172,20 +169,56 @@ function Page({ params }) {
                 });
 
                 socket.on("signalData", (data) => {
+                    if (data.userId === userData.userId) return; // Ignore our own signals
+
                     console.log("Received signal", {
                         from: data.userId,
+                        type: data.signal.type,
                         currentUser: userData.userId
                     });
-                    
-                    if (data.userId !== userData.userId) {
-                        if (!peer) {
-                            const newPeer = createPeer(false);
-                            if (newPeer) {
-                                setPeer(newPeer);
-                                newPeer.signal(data.signal);
-                            }
-                        } else {
+
+                    try {
+                        if (!peer && data.signal.type === 'offer') {
+                            // Create peer for answerer
+                            console.log("Creating peer as answerer");
+                            const newPeer = new Peer({
+                                initiator: false,
+                                stream: streamRef.current,
+                                trickle: false,
+                                config: {
+                                    iceServers: [
+                                        { urls: 'stun:stun.l.google.com:19302' },
+                                        { urls: 'stun:global.stun.twilio.com:3478' }
+                                    ]
+                                }
+                            });
+
+                            newPeer.on('signal', (signalData) => {
+                                console.log("Sending answer signal");
+                                socket.emit('signal', {
+                                    roomId: roomIdRef.current,
+                                    userId: userIdRef.current,
+                                    signal: signalData
+                                });
+                            });
+
+                            newPeer.on('stream', (remoteStream) => {
+                                console.log("Received remote stream as answerer");
+                                if (remoteVideoRef.current) {
+                                    remoteVideoRef.current.srcObject = remoteStream;
+                                }
+                            });
+
+                            setPeer(newPeer);
+                            newPeer.signal(data.signal);
+                        } else if (peer) {
                             peer.signal(data.signal);
+                        }
+                    } catch (error) {
+                        console.error("Error handling signal:", error);
+                        if (peer) {
+                            peer.destroy();
+                            setPeer(null);
                         }
                     }
                 });
@@ -208,6 +241,76 @@ function Page({ params }) {
         };
     }, [stream]);
 
+    const createPeer = (isInitiator) => {
+        if (!streamRef.current || !roomIdRef.current || !userIdRef.current) {
+            console.error("Missing required data for peer creation");
+            return null;
+        }
+
+        console.log("Creating peer", { isInitiator });
+
+        const newPeer = new Peer({
+            initiator: isInitiator,
+            stream: streamRef.current,
+            trickle: true,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' },
+                    {
+                        urls: 'turn:numb.viagenie.ca',
+                        username: 'webrtc@live.com',
+                        credential: 'muazkh'
+                    }
+                ]
+            }
+        });
+
+        newPeer.on('signal', (signalData) => {
+            console.log("Generating signal", { type: signalData.type });
+            socket.emit('signal', {
+                roomId: roomIdRef.current,
+                userId: userIdRef.current,
+                signal: signalData
+            });
+        });
+
+        newPeer.on('stream', (remoteStream) => {
+            console.log("Received remote stream");
+            if (remoteVideoRef.current && remoteStream.getVideoTracks().length > 0) {
+                console.log("Setting remote video stream");
+                remoteVideoRef.current.srcObject = remoteStream;
+                remoteVideoRef.current.play().catch(err => {
+                    console.error("Error playing remote stream:", err);
+                });
+            }
+        });
+
+        newPeer.on('connect', () => {
+            console.log("Peer connection established");
+        });
+
+        newPeer.on('error', (err) => {
+            console.error("Peer error:", err);
+            if (peer === newPeer) {
+                newPeer.destroy();
+                setPeer(null);
+            }
+        });
+
+        newPeer.on('close', () => {
+            console.log("Peer connection closed");
+            if (remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = null;
+            }
+            if (peer === newPeer) {
+                setPeer(null);
+            }
+        });
+
+        return newPeer;
+    };
+
     return (
         <div className='flex flex-col items-center justify-center h-screen'>
             <h1 className='text-2xl font-bold'>Video Chat Room</h1>
@@ -215,9 +318,9 @@ function Page({ params }) {
             <p className='text-lg'>User ID: {currentUserId}</p>
             <div className='flex flex-col items-center justify-center'>
                 <p className='text-lg'>Users in Room:</p>
-                {usersInRoom.map((user) => (
+                {usersInRoom.length > 0 ? usersInRoom.map((user) => (
                     <p key={user}>{user}</p>
-                ))}
+                )) : <p>{currentUserId}</p>}
             </div>
             <div className='flex flex-row items-center justify-center gap-4 my-4'>
                 <div className='relative'>

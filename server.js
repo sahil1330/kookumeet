@@ -25,10 +25,10 @@ app.prepare().then(() => {
     socket.on("createRoom", async (roomId, userId) => {
       console.log("Creating room:", roomId, "for user:", userId);
       try {
-        const existingRoom = await Room.findOne({ 
+        const existingRoom = await Room.findOne({
           users: { $elemMatch: { $eq: userId } }
         });
-        
+
         if (existingRoom) {
           console.log("User already in room:", existingRoom.roomId);
           io.to(socket.id).emit("roomCreated", existingRoom.roomId);
@@ -44,7 +44,7 @@ app.prepare().then(() => {
           users: [userId], // Add user directly
           status: "active"
         });
-        
+
         await room.save();
         console.log("New room created with users:", room.users);
         io.to(socket.id).emit("roomCreated", roomId);
@@ -68,13 +68,13 @@ app.prepare().then(() => {
     socket.on("joinRoom", async (roomId, userId) => {
       console.log("Joining room:", roomId, "for user:", userId);
       try {
-        const userInRoom = await Room.findOne({ 
+        const userInRoom = await Room.findOne({
           users: { $elemMatch: { $eq: userId } }
         });
         console.log("User in room:", userInRoom);
         if (userInRoom) {
           console.log("User already in room:", userInRoom.roomId);
-          io.to(socket.id).emit("userJoined", userInRoom.roomId);
+          io.to(socket.id).emit("userJoined", userInRoom.roomId, userId);
           return;
         }
 
@@ -102,7 +102,7 @@ app.prepare().then(() => {
         room.users.push(userId);
         room.status = room.users.length === 2 ? "full" : "active";
         await room.save();
-        
+
         console.log("Updated room users:", room.users);
         io.to(roomId).emit("userJoined", userId);
         io.to(roomId).emit("usersInRoom", room.users);
@@ -123,7 +123,6 @@ app.prepare().then(() => {
       io.to(roomId).emit("userJoined", userId);
       io.to(roomId).emit("usersInRoom", room.users);
     });
-    
 
     socket.on("leaveRoom", async (roomId, userId) => {
       console.log("Leaving room:", roomId);
@@ -138,8 +137,6 @@ app.prepare().then(() => {
         await room.save();
       }
     });
-
-    
 
     socket.on("disconnect", async () => {
       console.log("User disconnected:", socket.id);
