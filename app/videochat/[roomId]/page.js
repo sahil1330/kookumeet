@@ -15,6 +15,7 @@ function Page({ params }) {
     const [stream, setStream] = useState(null);
     const [peer, setPeer] = useState(null);
 
+
     // Use refs to store current values
     const userIdRef = useRef(null);
     const roomIdRef = useRef(null);
@@ -74,6 +75,7 @@ function Page({ params }) {
 
                 setCurrentUserId(userData.userId);
                 setRoomId(currentRoomId);
+
 
                 userIdRef.current = userData.userId;
                 roomIdRef.current = currentRoomId;
@@ -173,6 +175,7 @@ function Page({ params }) {
                 });
 
                 socket.on("userLeft", (leftUserId) => {
+                    console.log("User left:", leftUserId);
                     console.log("User left:", leftUserId);
                     if (peer) {
                         peer.destroy();
