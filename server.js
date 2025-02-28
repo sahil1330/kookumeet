@@ -166,13 +166,12 @@ app.prepare().then(() => {
 
     // Handle WebRTC signaling
     socket.on("signal", (data) => {
-      console.log("Signal from user:", data.userId, "in room:", data.roomId);
-      // Send signal to all clients in the room except sender
+      console.log("Forwarding signal from:", data.userId, "to room:", data.roomId);
       socket.to(data.roomId).emit("signalData", {
         userId: data.userId,
         signal: data.signal
       });
-    });
+    }); 
   });
 
   httpServer
