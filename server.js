@@ -174,7 +174,7 @@ app.prepare().then(() => {
     });
 
     socket.on("sendMessage", (roomId, userId, message) => {
-      console.log("Sending message:", message, "to room:", roomId);
+      console.log("Sending message:", message, "to room:", roomId, "from user:", userId);
       socket.to(roomId).emit("receiveMessage", message);
     });
   });

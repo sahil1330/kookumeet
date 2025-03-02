@@ -5,8 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { useRouter } from 'next/navigation';
 import socket from '../../../socket';
 import Peer from 'simple-peer';
+import { useParams } from 'next/navigation';
 
-function Page({ params }) {
+function Page() {
     const router = useRouter();
     // const [socket, setSocket] = useState(null);
     const [currentUserId, setCurrentUserId] = useState(null);
@@ -24,7 +25,7 @@ function Page({ params }) {
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
     const peerRef = useRef(null);
-
+    const params = useParams();
     // Update refs when states change
     useEffect(() => {
         userIdRef.current = currentUserId;
@@ -91,7 +92,7 @@ function Page({ params }) {
                 // Add message listener here
                 socket.on("receiveMessage", (message) => {
                     console.log("Received message:", message);
-                    setMessages((prevMessages) => [...prevMessages, { text: message.text, sender: "partner" }]);
+                    setMessages((prevMessages) => [...prevMessages, { text: message, sender: "partner" }]);
                 });
 
                 // Set up signal data handler BEFORE joining room
@@ -103,6 +104,13 @@ function Page({ params }) {
                     }
                 });
 
+                // Handle room not found
+                socket.on("roomNotFound", () => {
+                    alert("Room not found. Please create a new room.");
+                    router.push("/videochat");
+                });
+
+                // Handle user joining
                 socket.on("usersInRoom", (users) => {
                     console.log("Users in room:", users);
                     setUsersInRoom(users);
@@ -250,15 +258,15 @@ function Page({ params }) {
         };
 
         setMessages([...messages, message]);
-        
+
         socket.emit("sendMessage", roomId, currentUserId, newMessage);
         setNewMessage("");
     }
 
     return (
-        <div className="flex h-full bg-gray-100">
+        <div className="flex md:flex-row flex-col h-full bg-gray-100">
             {/* Video Section */}
-            <div className="w-3/4 flex flex-col p-6">
+            <div className="w-full md:w-3/4 flex flex-col p-6">
                 {/* Partner Video */}
                 <div className="border-2 border-blue-500 rounded-xl mb-10">
                     {/* Added styling */}
@@ -272,7 +280,7 @@ function Page({ params }) {
                 </div>
 
                 {/* Local User Video */}
-                <div className=" mb-10 border-2 w-1/3 border-yellow-500 rounded-xl ">
+                <div className=" mb-10 border-2 md:w-1/3 w-2/3 border-yellow-500 rounded-xl ">
                     {/* Added styling */}
                     <div className="bg-black w-full h-40 flex rounded-xl items-center justify-center">
                         <video
@@ -289,9 +297,23 @@ function Page({ params }) {
                     <div className="space-x-2">
                         <button
                             className="px-6 py-2 bg-red-300 rounded text-gray-700 font-semibold"
-                            onClick={() => router.push("/videochat")}
+                            onClick={() => {
+                                if (peer) {
+                                    peer.destroy();
+                                    setPeer(null);
+                                }
+                                if (peerRef.current) {
+                                    peerRef.current.destroy();
+                                    peerRef.current = null;
+                                }
+                                if (stream) {
+                                    stream.getTracks().forEach(track => track.stop());
+                                }
+                                socket.emit("leaveRoom", roomId, currentUserId);
+                                router.push("/videochat");
+                            }}
                         >
-                            Cancel
+                            Leave Room
                         </button>
                         <button
                             className="px-6 py-2 bg-blue-300 rounded text-gray-700 font-semibold"
@@ -308,7 +330,7 @@ function Page({ params }) {
 
             {/* Chatbox Section */}
             <div
-                className="w-1/2 flex flex-col p-4 rounded-lg"
+                className="w-full md:w-1/2 flex flex-col p-4 rounded-lg"
                 style={{
                     backgroundImage: "url('/background_chat.jpg')",
                     backgroundSize: "cover", // or 'contain', '100% 100%', etc.
