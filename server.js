@@ -171,7 +171,12 @@ app.prepare().then(() => {
         userId: data.userId,
         signal: data.signal
       });
-    }); 
+    });
+
+    socket.on("sendMessage", (roomId, userId, message) => {
+      console.log("Sending message:", message, "to room:", roomId);
+      socket.to(roomId).emit("receiveMessage", message);
+    });
   });
 
   httpServer

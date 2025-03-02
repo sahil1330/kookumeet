@@ -14,7 +14,8 @@ function Page({ params }) {
     const [usersInRoom, setUsersInRoom] = useState([]);
     const [stream, setStream] = useState(null);
     const [peer, setPeer] = useState(null);
-
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState("");
 
     // Use refs to store current values
     const userIdRef = useRef(null);
@@ -85,6 +86,13 @@ function Page({ params }) {
                 socket.off("userLeft");
                 socket.off("usersInRoom");
                 socket.off("signalData");
+                socket.off("receiveMessage"); // Add this
+
+                // Add message listener here
+                socket.on("receiveMessage", (message) => {
+                    console.log("Received message:", message);
+                    setMessages((prevMessages) => [...prevMessages, { text: message.text, sender: "partner" }]);
+                });
 
                 // Set up signal data handler BEFORE joining room
                 socket.on('signalData', (data) => {
@@ -205,6 +213,7 @@ function Page({ params }) {
             if (peer) {
                 setPeer(null);
             }
+            socket.off("receiveMessage"); // Add this
         };
     }, [stream]);
 
@@ -232,58 +241,113 @@ function Page({ params }) {
         router.push("/videochat");
     }
 
+    const handleSendMessage = () => {
+        if (newMessage.trim() === "") return;
+
+        const message = {
+            text: newMessage,
+            sender: "me"
+        };
+
+        setMessages([...messages, message]);
+        
+        socket.emit("sendMessage", roomId, currentUserId, newMessage);
+        setNewMessage("");
+    }
+
     return (
-        <div className='flex flex-col items-center justify-center h-screen'>
-            <h1 className='text-2xl font-bold'>Video Chat Room</h1>
-            <p className='text-lg'>Room ID: {roomId}</p>
-            <p className='text-lg'>User ID: {currentUserId}</p>
-            <div className='flex flex-col items-center justify-center'>
-                <p className='text-lg'>Users in Room:</p>
-                {usersInRoom.length > 0 ? usersInRoom.map((user) => (
-                    <p key={user}>{user}</p>
-                )) : <p>{currentUserId}</p>}
-            </div>
-            <div className='flex flex-row items-center justify-center gap-4 my-4'>
-                <div className='relative'>
-                    <video
-                        ref={localVideoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className='w-64 h-48 border-2 border-blue-500 rounded-lg'
-                    />
-                    <p className='absolute bottom-2 left-2 bg-black bg-opacity-50 px-2 py-1 text-white rounded'>You</p>
+        <div className="flex h-full bg-gray-100">
+            {/* Video Section */}
+            <div className="w-3/4 flex flex-col p-6">
+                {/* Partner Video */}
+                <div className="border-2 border-blue-500 rounded-xl mb-10">
+                    {/* Added styling */}
+                    <div className="bg-black w-full  h-80 flex rounded-xl items-center justify-center">
+                        <video
+                            ref={remoteVideoRef}
+                            autoPlay
+                            className="w-full h-full object-cover rounded-xl"
+                        />
+                    </div>
                 </div>
-                <div className='relative'>
-                    <video
-                        ref={remoteVideoRef}
-                        autoPlay
-                        playsInline
-                        className='w-64 h-48 border-2 border-green-500 rounded-lg'
-                    />
-                    <p className='absolute bottom-2 left-2 bg-black bg-opacity-50 px-2 py-1 text-white rounded'>Peer</p>
+
+                {/* Local User Video */}
+                <div className=" mb-10 border-2 w-1/3 border-yellow-500 rounded-xl ">
+                    {/* Added styling */}
+                    <div className="bg-black w-full h-40 flex rounded-xl items-center justify-center">
+                        <video
+                            ref={localVideoRef}
+                            autoPlay
+                            muted
+                            className="w-full h-full object-cover rounded-xl"
+                        />
+                    </div>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex justify-between items-center  ">
+                    <div className="space-x-2">
+                        <button
+                            className="px-6 py-2 bg-red-300 rounded text-gray-700 font-semibold"
+                            onClick={() => router.push("/videochat")}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            className="px-6 py-2 bg-blue-300 rounded text-gray-700 font-semibold"
+                            onClick={handleJoinAnotherRoom}
+                        >
+                            Join Another Room
+                        </button>
+                    </div>
                 </div>
             </div>
-            <div className='flex space-x-4 mt-4'>
-                <button className='bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600'
-                    onClick={() => {
-                        if (window.confirm("Are you sure you want to leave the room?")) {
-                            if (peer) {
-                                peer.destroy();
-                                setPeer(null);
+
+            {/* Black Divider */}
+            <div className="bg-black w-1"></div>
+
+            {/* Chatbox Section */}
+            <div
+                className="w-1/2 flex flex-col p-4 rounded-lg"
+                style={{
+                    backgroundImage: "url('/background_chat.jpg')",
+                    backgroundSize: "cover", // or 'contain', '100% 100%', etc.
+                    backgroundRepeat: "no-repeat",
+                    backgroundColor: "#D3D3D3",
+                }}
+            >
+                <div className="flex-grow overflow-y-auto p-2">
+                    {messages.map((message, index) => (
+                        <div
+                            key={index}
+                            className={`mb-2 rounded-lg p-2 max-w-xs ${message.sender === "me" ? "bg-teal-300 ml-auto text-black" : "bg-gray-400 mr-auto"
+                                }`}
+                        >
+                            {message.text}
+                        </div>
+                    ))}
+                </div>
+
+                <div className="flex items-center p-2 mt-4 bg-blue-700 rounded-lg">
+                    <input
+                        type="text"
+                        className="flex-grow rounded-lg py-2 px-3 text-black"
+                        placeholder="Type your message..."
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                handleSendMessage();
                             }
-                            if (stream) {
-                                stream.getTracks().forEach(track => track.stop());
-                            }
-                            socket.emit("leaveRoom", roomId, currentUserId);
-                            router.push("/videochat");
-                        }
-                    }}>
-                    Leave Room
-                </button>
-                <button className='bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600'
-                    onClick={() => handleJoinAnotherRoom()}
-                >Join Another Room</button>
+                        }}
+                    />
+                    <button
+                        className="ml-2 px-4 py-2 bg-blue-500 text-black rounded-lg hover:bg-blue-600"
+                        onClick={handleSendMessage}
+                    >
+                        Send
+                    </button>
+                </div>
             </div>
         </div>
     );
